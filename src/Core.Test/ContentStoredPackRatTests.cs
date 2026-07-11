@@ -1,5 +1,5 @@
-using BigRedProf.Content.Core;
 using BigRedProf.Content.Core.Models;
+using BigRedProf.Content.Core.PackRats;
 using BigRedProf.Data.Core;
 using Xunit;
 
@@ -12,7 +12,11 @@ namespace BigRedProf.Content.Test
 		public void ContentStoredShouldRoundTrip()
 		{
 			IPiedPiper piedPiper = new PiedPiper();
-			ContentRegistrar.RegisterContentPackRats(piedPiper);
+			piedPiper.RegisterCorePackRats();
+			piedPiper.RegisterPackRat<ContentStored>(
+				new ContentStoredPackRat(piedPiper),
+				ContentSchemaId.ContentStored
+			);
 
 			ContentStored model = new ContentStored()
 			{

@@ -94,9 +94,8 @@ namespace BigRedProf.Content.Test
 		[Fact]
 		public async Task PutContentShouldNotCatalogWhenStorageFails()
 		{
-			IPiedPiper piedPiper = new PiedPiper();
 			ListScribe catalogScribe = new ListScribe();
-			ContentStore contentStore = new ContentStore(piedPiper, new ThrowingStorageProvider(), catalogScribe);
+			ContentStore contentStore = new ContentStore(new ThrowingStorageProvider(), catalogScribe);
 			Code content = new Code("11010010");
 
 			await Assert.ThrowsAsync<InvalidOperationException>(
@@ -112,9 +111,8 @@ namespace BigRedProf.Content.Test
 		[Fact]
 		public async Task PutContentShouldLeaveOnlyAnOrphanBlobWhenCatalogingFails()
 		{
-			IPiedPiper piedPiper = new PiedPiper();
 			MemoryContentStoreStorageProvider storageProvider = new MemoryContentStoreStorageProvider();
-			ContentStore contentStore = new ContentStore(piedPiper, storageProvider, new ThrowingScribe());
+			ContentStore contentStore = new ContentStore(storageProvider, new ThrowingScribe());
 			Code content = new Code("11010010");
 
 			await Assert.ThrowsAsync<InvalidOperationException>(
@@ -160,8 +158,7 @@ namespace BigRedProf.Content.Test
 		[Fact]
 		public async Task TryGetContentShouldThrowWhenContentIsCorrupted()
 		{
-			IPiedPiper piedPiper = new PiedPiper();
-			ContentStore contentStore = new ContentStore(piedPiper, new CorruptingStorageProvider(), new ListScribe());
+			ContentStore contentStore = new ContentStore(new CorruptingStorageProvider(), new ListScribe());
 			Code content = new Code(new byte[] { 0x42, 0x49, 0x47, 0x52, 0x45, 0x44 });
 
 			Multihash multihash = await contentStore.PutContentAsync(content);
@@ -195,41 +192,22 @@ namespace BigRedProf.Content.Test
 		[Fact]
 		public void ConstructorShouldThrowWhenArgumentsAreNull()
 		{
-			IPiedPiper piedPiper = new PiedPiper();
 			MemoryContentStoreStorageProvider storageProvider = new MemoryContentStoreStorageProvider();
 			ListScribe catalogScribe = new ListScribe();
 
 			Assert.Throws<ArgumentNullException>(
 				() =>
 				{
-					new ContentStore(null!, storageProvider, catalogScribe);
+					new ContentStore(null!, catalogScribe);
 				}
 			);
 
 			Assert.Throws<ArgumentNullException>(
 				() =>
 				{
-					new ContentStore(piedPiper, null!, catalogScribe);
+					new ContentStore(storageProvider, null!);
 				}
 			);
-
-			Assert.Throws<ArgumentNullException>(
-				() =>
-				{
-					new ContentStore(piedPiper, storageProvider, null!);
-				}
-			);
-		}
-
-		[Fact]
-		public void ConstructorShouldTolerateAPiedPiperWithPackRatsAlreadyRegistered()
-		{
-			IPiedPiper piedPiper = new PiedPiper();
-			piedPiper.RegisterCorePackRats();
-			MemoryContentStoreStorageProvider storageProvider = new MemoryContentStoreStorageProvider();
-
-			new ContentStore(piedPiper, storageProvider, new ListScribe());
-			new ContentStore(piedPiper, storageProvider, new ListScribe());
 		}
 		#endregion
 	}

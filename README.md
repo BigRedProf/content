@@ -52,15 +52,19 @@ The `ContentStore` class owns the invariants every content store must uphold:
 ## Usage
 
 ```csharp
-IPiedPiper piedPiper = new PiedPiper();
 IContentStoreStorageProvider storageProvider = new MemoryContentStoreStorageProvider();
 IScribe catalogScribe = /* a scribe bound to this store's catalog story */;
 
-IContentStore contentStore = new ContentStore(piedPiper, storageProvider, catalogScribe);
+IContentStore contentStore = new ContentStore(storageProvider, catalogScribe);
 
 Multihash multihash = await contentStore.PutContentAsync(content);
 Code? fetchedContent = await contentStore.TryGetContentAsync(multihash);
 ```
+
+The API boundary is `Code`, not model, so `ContentStore` manages its own pied piper
+internally; callers never need to prepare one. Consumers that decode catalog events
+themselves (projections, inspection tools) register `ContentStoredPackRat` with their own
+pied piper.
 
 Consumers that only read content should depend on `IContentSource`, the read side of
 `IContentStore`, so they can be composed with caches and other lightweight sources that

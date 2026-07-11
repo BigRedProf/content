@@ -1,4 +1,5 @@
 using BigRedProf.Content.Core.Models;
+using BigRedProf.Content.Core.PackRats;
 using BigRedProf.Data.Core;
 using BigRedProf.Stories;
 using System;
@@ -14,36 +15,48 @@ namespace BigRedProf.Content.Core
 	/// </summary>
 	public class ContentStore : IContentStore
 	{
+		#region static fields
+		private static readonly IPiedPiper _piedPiper;
+		#endregion
+
 		#region fields
-		private readonly IPiedPiper _piedPiper;
 		private readonly IContentStoreStorageProvider _storageProvider;
 		private readonly IScribe _catalogScribe;
 		private readonly MultihashAlgorithm _algorithm;
+		#endregion
+
+		#region class constructors
+		static ContentStore()
+		{
+			// The API boundary is Code, not model, so no caller models ever cross into a
+			// content store. That lets us manage our own pied piper internally rather than
+			// requiring callers to prepare one.
+			_piedPiper = new PiedPiper();
+			_piedPiper.RegisterCorePackRats();
+			_piedPiper.RegisterPackRat<ContentStored>(
+				new ContentStoredPackRat(_piedPiper),
+				ContentSchemaId.ContentStored
+			);
+		}
 		#endregion
 
 		#region constructors
 		/// <summary>
 		/// Creates a <see cref="ContentStore"/> using the default multihash algorithm.
 		/// </summary>
-		/// <param name="piedPiper">The pied piper.</param>
 		/// <param name="storageProvider">The storage provider that stores the actual blobs.</param>
 		/// <param name="catalogScribe">
 		/// The scribe, already bound to this store's catalog story, used to record
 		/// <see cref="ContentStored"/> events.
 		/// </param>
-		public ContentStore(
-			IPiedPiper piedPiper,
-			IContentStoreStorageProvider storageProvider,
-			IScribe catalogScribe
-		)
-			: this(piedPiper, storageProvider, catalogScribe, DefaultAlgorithm)
+		public ContentStore(IContentStoreStorageProvider storageProvider, IScribe catalogScribe)
+			: this(storageProvider, catalogScribe, DefaultAlgorithm)
 		{
 		}
 
 		/// <summary>
 		/// Creates a <see cref="ContentStore"/> using a specific multihash algorithm.
 		/// </summary>
-		/// <param name="piedPiper">The pied piper.</param>
 		/// <param name="storageProvider">The storage provider that stores the actual blobs.</param>
 		/// <param name="catalogScribe">
 		/// The scribe, already bound to this store's catalog story, used to record
@@ -51,24 +64,17 @@ namespace BigRedProf.Content.Core
 		/// </param>
 		/// <param name="algorithm">The multihash algorithm to use for new content.</param>
 		public ContentStore(
-			IPiedPiper piedPiper,
 			IContentStoreStorageProvider storageProvider,
 			IScribe catalogScribe,
 			MultihashAlgorithm algorithm
 		)
 		{
-			if(piedPiper == null)
-				throw new ArgumentNullException(nameof(piedPiper));
-
 			if(storageProvider == null)
 				throw new ArgumentNullException(nameof(storageProvider));
 
 			if(catalogScribe == null)
 				throw new ArgumentNullException(nameof(catalogScribe));
 
-			ContentRegistrar.RegisterContentPackRats(piedPiper);
-
-			_piedPiper = piedPiper;
 			_storageProvider = storageProvider;
 			_catalogScribe = catalogScribe;
 			_algorithm = algorithm;
