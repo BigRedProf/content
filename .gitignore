@@ -8,3 +8,9 @@ obj/
 
 # Test results
 TestResults/
+
+# BigRedProf: generated build outputs (task clean removes this tree)
+artifacts/
+
+# BigRedProf: per-developer environment overrides (Task loads this before .env)
+.env.local
