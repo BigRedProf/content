@@ -70,6 +70,40 @@ Consumers that only read content should depend on `IContentSource`, the read sid
 `IContentStore`, so they can be composed with caches and other lightweight sources that
 don't carry the durability obligations of a true content store.
 
+## Development
+
+This repository is driven by [Task](https://taskfile.dev). Install it once per
+machine:
+
+```powershell
+choco install go-task
+```
+
+Then, from the repository root:
+
+```powershell
+task --list      # see available tasks
+task verify      # build + unit tests — everything required before merging
+task build       # fast inner loop
+task doctor      # toolchain/version diagnostics
+task pack        # build the NuGet package locally
+```
+
+Task loads the layered environment (`.env.local` then `.env`) on every
+invocation, so no shell setup is required — commands work in a fresh process for
+humans and agents alike. Note the solution lives at `src/Content.sln`, not at
+the repository root.
+
+`BigRedProf.Content.Core` is published to GitHub Packages by CI on a push to
+`main`. `task pack` builds the package locally and deliberately cannot push, so
+nothing local can release a package by accident. The workflow calls
+`task verify` for its build-and-test half, so CI and local agree on what "it
+builds" means.
+
+There is no container image here — this repository ships a library, so there is
+no `image` or `publish` task. See [script/README.md](script/README.md) for the
+(short) script layer.
+
 ## Roadmap
 
 * `DiskContentStoreStorageProvider`, `AzureBlobContentStoreStorageProvider`,

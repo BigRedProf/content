@@ -11,6 +11,12 @@ NOTE:
 * Always use **tabs** (never spaces) for indentation.
 * Keep indentation consistent across all files.
 
+## Line Endings
+
+* Use **CRLF** line endings for Windows-oriented files, including C# and .NET project files, PowerShell scripts, and Windows command scripts.
+* Use **LF** line endings for Linux/Unix-oriented files, including shell scripts (`.sh`).
+* Never mix CRLF and LF line endings within the same file.
+
 ## Braces & Blocks
 
 * **Multi-line bodies:** Place both opening and closing curly braces on their own line.
@@ -188,7 +194,7 @@ NOTE:
     public static Librarian CreateLibrarian(IPiedPiper? piedPiper, string directoryPath)
     {
         if (string.IsNullOrWhiteSpace(directoryPath))
-            throw new ArgumentNullException(nameof(directoryPath));
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(directoryPath));
 
         ArgumentNullException.ThrowIfNull(piedPiper);
 
