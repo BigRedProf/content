@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFramework>netstandard2.1</TargetFramework>
@@ -6,20 +6,14 @@
 
 		<Title>Content Library</Title>
 		<Description>A content-addressable data store. Content stores store codes by multihash and record their durable history in a story.</Description>
-		<Copyright>Big Red Professor</Copyright>
-		<PackageReleaseNotes>No Release Notes</PackageReleaseNotes>
-		<Authors>BigRedProf</Authors>
-		<Company>Big Red Professor</Company>
+		<PackageTags>bigredprof;content-addressable;multihash;storage;stories</PackageTags>
 		<Product>Content Library</Product>
-		<Version>0.1.0</Version>
 
-		<!-- HACKHACK: just embed the .pdb file until the GitHub NuGet package manager supports snpukgs-->
-		<DebugType>embedded</DebugType>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="BigRedProf.Data.Core" Version="0.7.8" />
-		<PackageReference Include="BigRedProf.Stories.Core" Version="0.6.8" />
+		<PackageReference Include="BigRedProf.Data.Core" Version="0.8.0" />
+		<PackageReference Include="BigRedProf.Stories.Core" Version="0.8.0" />
 	</ItemGroup>
 
 </Project>
