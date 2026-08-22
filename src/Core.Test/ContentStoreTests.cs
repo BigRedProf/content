@@ -62,13 +62,13 @@ namespace BigRedProf.Content.Test
 
 			Assert.Single(harness.CatalogScribe.Things);
 
-			ModelWithSchema modelWithSchema = harness.PiedPiper.DecodeModel<ModelWithSchema>(
+			Datum datum = harness.PiedPiper.UnpackModel<Datum>(
 				harness.CatalogScribe.Things[0],
-				CoreSchema.ModelWithSchema
+				CoreSchema.Datum
 			);
-			Assert.Equal(new AttributeFriendlyGuid(ContentSchemaId.ContentStored), modelWithSchema.SchemaId);
+			Assert.Equal(new Guid(ContentSchemaId.ContentStored), datum.SchemaId);
 
-			ContentStored contentStored = (ContentStored) modelWithSchema.Model;
+			ContentStored contentStored = datum.Unpack<ContentStored>(harness.PiedPiper);
 			Assert.Equal(multihash, contentStored.Multihash);
 		}
 
