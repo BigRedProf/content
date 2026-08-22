@@ -23,8 +23,8 @@ namespace BigRedProf.Content.Test
 				Multihash = Multihash.FromBytes(new byte[] { 0x42, 0x49, 0x47 }, MultihashAlgorithm.Sha256)
 			};
 
-			Code code = piedPiper.EncodeModel<ContentStored>(model, ContentSchemaId.ContentStored);
-			ContentStored roundTrippedModel = piedPiper.DecodeModel<ContentStored>(code, ContentSchemaId.ContentStored);
+			Code code = piedPiper.PackModel<ContentStored>(model, ContentSchemaId.ContentStored);
+			ContentStored roundTrippedModel = piedPiper.UnpackModel<ContentStored>(code, ContentSchemaId.ContentStored);
 
 			Assert.Equal(model.Multihash, roundTrippedModel.Multihash);
 		}
