@@ -100,15 +100,14 @@ namespace BigRedProf.Content.Core
 			// restore.
 			await _storageProvider.PutBlobAsync(multihash, blob).ConfigureAwait(false);
 
-			ModelWithSchema modelWithSchema = new ModelWithSchema()
-			{
-				SchemaId = ContentSchemaId.ContentStored,
-				Model = new ContentStored()
+			Datum datum = _piedPiper.PackDatum(
+				new ContentStored()
 				{
 					Multihash = multihash
-				}
-			};
-			Code catalogThing = _piedPiper.EncodeModel<ModelWithSchema>(modelWithSchema, CoreSchema.ModelWithSchema);
+				},
+				ContentSchemaId.ContentStored
+			);
+			Code catalogThing = _piedPiper.PackModel<Datum>(datum, CoreSchema.Datum);
 			await _catalogScribe.RecordSomethingAsync(catalogThing).ConfigureAwait(false);
 
 			return multihash;
