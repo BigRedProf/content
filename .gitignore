@@ -14,3 +14,6 @@ artifacts/
 
 # BigRedProf: per-developer environment overrides (Task loads this before .env)
 .env.local
+
+# Which locally packed packages this repository is pointed at (task use:local).
+.local-packages.json
