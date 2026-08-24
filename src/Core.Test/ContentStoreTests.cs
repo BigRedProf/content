@@ -1,5 +1,5 @@
 using BigRedProf.Content.Core;
-using BigRedProf.Content.Core.Models;
+using BigRedProf.Content.Core.Data;
 using BigRedProf.Content.Core.Providers;
 using BigRedProf.Content.Test.TestDoubles;
 using BigRedProf.Data.Core;
