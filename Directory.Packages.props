@@ -1,0 +1,62 @@
+<Project>
+
+	<!--
+	Package versions for every project in this repository, in one place.
+
+	Without this, a version lives in each csproj that references it, and a
+	cross-repository upgrade means finding all of them. Migrating the stack to
+	BigRedProf.Data 0.9 meant doing exactly that, five times, across four
+	repositories, and every pass was a chance to miss one.
+
+	The csprojs keep a bare <PackageReference Include="..." /> with no version.
+	MSBuild resolves it from the <PackageVersion> below. A csproj that needs a
+	different version says so explicitly with VersionOverride, which makes the
+	exception visible instead of making the rule invisible.
+	-->
+
+	<PropertyGroup>
+		<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+
+		<!--
+		Deliberately off. Transitive pinning promotes every transitive dependency
+		to a version this file controls, which turns an upgrade of one package
+		into a decision about its whole graph. Turn it on when there is a specific
+		dependency to pin, not pre-emptively.
+		-->
+		<CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
+	</PropertyGroup>
+
+	<!--
+	The BigRedProf stack. These move together: content sits on stories, which
+	sits on data, so a data release is not finished until both of these follow.
+
+	This repository restores no dotnet tools, so unlike the stories and digihouse
+	repositories there is no .config/dotnet-tools.json holding a second copy of a
+	BigRedProf.Data version. Add both together if a tool is ever introduced.
+	-->
+	<ItemGroup>
+		<PackageVersion Include="BigRedProf.Data.Core" Version="0.9.0-rc.3" />
+		<PackageVersion Include="BigRedProf.Stories.Core" Version="0.9.0-rc.1" />
+	</ItemGroup>
+
+	<!--
+	Build and packaging.
+	-->
+	<ItemGroup>
+		<PackageVersion Include="MinVer" Version="7.0.0" />
+	</ItemGroup>
+
+	<!--
+	Testing. These are the versions this repository has always used; they are
+	older than the data repository's, which was unified on the newest of three
+	drifting sets. Aligning the stack on one set of test packages is worth doing
+	and is not this change.
+	-->
+	<ItemGroup>
+		<PackageVersion Include="coverlet.collector" Version="3.0.2" />
+		<PackageVersion Include="Microsoft.NET.Test.Sdk" Version="16.9.4" />
+		<PackageVersion Include="xunit" Version="2.4.1" />
+		<PackageVersion Include="xunit.runner.visualstudio" Version="2.4.3" />
+	</ItemGroup>
+
+</Project>
