@@ -1,4 +1,4 @@
-namespace BigRedProf.Content.Core.Models
+namespace BigRedProf.Content.Core.Data
 {
 	/// <summary>
 	/// The schema identifiers for BigRedProf.Content models.

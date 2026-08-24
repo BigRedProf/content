@@ -1,4 +1,4 @@
-using BigRedProf.Content.Core.Models;
+using BigRedProf.Content.Core.Data;
 using BigRedProf.Content.Core.PackRats;
 using BigRedProf.Data.Core;
 using BigRedProf.Stories;

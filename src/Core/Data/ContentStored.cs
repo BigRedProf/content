@@ -1,6 +1,6 @@
 using BigRedProf.Data.Core;
 
-namespace BigRedProf.Content.Core.Models
+namespace BigRedProf.Content.Core.Data
 {
 	/// <summary>
 	/// A catalog event recording that a successful put was performed for a given multihash.

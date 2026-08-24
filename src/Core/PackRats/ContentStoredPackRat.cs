@@ -1,4 +1,4 @@
-using BigRedProf.Content.Core.Models;
+using BigRedProf.Content.Core.Data;
 using BigRedProf.Data.Core;
 using System;
 
@@ -8,9 +8,9 @@ namespace BigRedProf.Content.Core.PackRats
 	/// Packs and unpacks <see cref="ContentStored"/> catalog events.
 	/// </summary>
 	/// <remarks>
-	/// Hand-written for now. If the catalog event family grows, consider migrating the models
-	/// to a Core.Models project compiled with the pack rat compiler (prc), as BigRedProf.Stories
-	/// does.
+	/// Hand-written for now. If the catalog event family grows, consider migrating these
+	/// declarations to a Core.Data project compiled with the pack rat compiler (prc), as
+	/// BigRedProf.Stories does.
 	/// </remarks>
 	public class ContentStoredPackRat : PackRat<ContentStored>
 	{
