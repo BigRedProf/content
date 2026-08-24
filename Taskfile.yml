@@ -96,6 +96,18 @@ tasks:
     desc: Tool and version diagnostics (checks Task/.NET)
     cmds: ['{{.PWSH}} script/doctor.ps1']
 
+  release:
+    # Publishing stays CI's job -- nothing here pushes a package. What this pushes is the
+    # `v*` tag that makes CI publish, which is the step that is easy to get wrong and
+    # impossible to take back: nuget.org versions are immutable, so a tag on the wrong
+    # commit or a typo'd version is spent forever. Hence the checks and the confirmation
+    # rather than two commands to remember.
+    desc: 'Release a version by tagging it, which is what publishes to nuget.org. Usage: task release -- 0.1.0'
+    cmds: ['{{.PWSH}} script/release.ps1 -Version {{.CLI_ARGS}}']
+    preconditions:
+      - sh: '[ -n "{{.CLI_ARGS}}" ]'
+        msg: 'A version is required. Usage: task release -- 0.1.0'
+
   pack:
     desc: Build the BigRedProf.Content.Core NuGet package locally (into artifacts/packages)
     # Depends on restore, NOT build. The package is always Release, so depending
@@ -114,9 +126,10 @@ tasks:
 # Package publishing is CI's job. .github/workflows/dotnet.yml pushes
 # BigRedProf.Content.Core to nuget.org when a `v*` TAG is pushed -- not on a
 # merge to main; `task pack` only builds it locally, so nothing here can release
-# a package by accident. To release: tag the commit `v<major>.<minor>.<patch>`
-# and push the tag. MinVer reads the version from it (Directory.Build.props), so
-# there is no version to bump in any csproj. The workflow calls
+# a package by accident. To release, use `task release` -- it pushes that tag
+# after checking everything that cannot be undone once it exists. MinVer reads
+# the version from the tag (Directory.Build.props), so there is no version to
+# bump in any csproj. The workflow calls
 # `task verify` for the build-and-test half, so CI and local agree on what
 # "it builds" means.
 # -----------------------------------------------------------------------------
