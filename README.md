@@ -61,6 +61,11 @@ Multihash multihash = await contentStore.PutContentAsync(content);
 Code? fetchedContent = await contentStore.TryGetContentAsync(multihash);
 ```
 
+`MemoryContentStoreStorageProvider` keeps blobs in the process, so they disappear
+when it exits. `DiskContentStoreStorageProvider` stores them as files under a
+root directory and still has them when a new process opens that same directory.
+It does not persist the catalog story; that remains the scribe's job.
+
 The API boundary is `Code`, not model, so `ContentStore` manages its own pied piper
 internally; callers never need to prepare one. Consumers that decode catalog events
 themselves (projections, inspection tools) register `ContentStoredPackRat` with their own
@@ -106,8 +111,7 @@ no `image` or `publish` task. See [script/README.md](script/README.md) for the
 
 ## Roadmap
 
-* `DiskContentStoreStorageProvider`, `AzureBlobContentStoreStorageProvider`,
-  `S3ContentStoreStorageProvider`
+* `AzureBlobContentStoreStorageProvider`, `S3ContentStoreStorageProvider`
 * a catalog projection for rebuilding store inventory from the catalog story
 * `BigRedProf.Content.Cli` with operations like `content put`, `content get`,
   `content inspect`, `content verify`, `content export`, and `content restore`
