@@ -59,15 +59,32 @@ jobs:
         run: task verify
         env:
           BRP_DOTNET_CONFIGURATION: Release
+
+  # Pack and publish are a separate job so they cannot start until every
+  # verify leg has passed. needs: on a matrix job waits for all of its legs;
+  # a failure on Windows therefore blocks the NuGet push. A published version
+  # is immutable, so publishing from the Linux leg while Windows is still
+  # running (or has failed) would ship a version that missed the check.
+  publish:
+    name: Pack and publish
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 is REQUIRED here too. This job has its own checkout, and
+      # MinVer reads the version from tags.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.403
       # Packaging and publishing stay as explicit dotnet steps, so this workflow
       # remains the only thing that can release a package.
       #
       # Pack runs on pull requests too -- it publishes nothing, and knowing the
-      # package still builds is worth having before merge. Linux only: the
-      # Windows leg is here to run tests, and a second pack would make a tag
-      # push the same version twice.
+      # package still builds is worth having before merge.
       - name: Pack
-        if: runner.os == 'Linux'
         run: dotnet pack -c Release -o ${{ github.workspace }}/artifacts/packages
         working-directory: src
       # The temporary key is valid for one hour and each OIDC token buys exactly
@@ -75,7 +92,7 @@ jobs:
       # the job. It is gated on the tag too -- on a branch build there is
       # nothing to publish and no policy would match.
       - name: NuGet login (OIDC to short-lived key)
-        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: NuGet/login@v1
         id: nuget-login
         with:
@@ -87,5 +104,5 @@ jobs:
       # duplicate means the same tag is being released twice, and that should
       # fail loudly rather than be quietly ignored.
       - name: Push packages to nuget.org
-        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v')
         run: dotnet nuget push "artifacts/packages/*.nupkg" --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json

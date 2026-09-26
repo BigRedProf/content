@@ -12,12 +12,13 @@ namespace BigRedProf.Content.Core.Providers
 	/// <para>
 	/// Blobs are addressed at <c>blobs/&lt;shard&gt;/&lt;id&gt;</c> under the root.
 	/// <c>id</c> is <see cref="Multihash.ToMultibaseString()"/>, multibase base32
-	/// lowercase. Every SHA-256 multihash in that encoding starts with <c>bciq</c>
-	/// (the multibase prefix plus the fixed multihash header), so the first two
-	/// characters would put every blob in one directory. <c>shard</c> is the next
-	/// two characters, the first ones that depend on the digest. They are still
-	/// taken from the id, and they are lowercase, so the path is safe on volumes
-	/// that ignore case.
+	/// lowercase. The first characters of that id are the multibase prefix and the
+	/// multihash header, which do not depend on the digest, so <c>shard</c> starts
+	/// after them. For sha2-256 the header is 16 bits and the shard is still the
+	/// two characters at offset 4 (every such id begins <c>bciq</c>, and the first
+	/// two characters would otherwise share one directory). Other algorithms keep
+	/// the same rule with their own header size. The characters are lowercase, so
+	/// the path is safe on volumes that ignore case.
 	/// </para>
 	/// <para>
 	/// A put writes a temporary file in the shard directory, flushes it, and renames
@@ -222,12 +223,10 @@ namespace BigRedProf.Content.Core.Providers
 			return buffer;
 		}
 
-		private static string GetShard(string id)
+		private static string GetShard(Multihash multihash, string id)
 		{
 			if(
-				id.Length < Sha256MultibasePrefix.Length + ShardLength
-				|| !id.StartsWith(Sha256MultibasePrefix, StringComparison.Ordinal)
-				|| id.IndexOf('/') >= 0
+				id.IndexOf('/') >= 0
 				|| id.IndexOf('\\') >= 0
 				|| !string.Equals(id, id.ToLowerInvariant(), StringComparison.Ordinal)
 			)
@@ -235,7 +234,56 @@ namespace BigRedProf.Content.Core.Providers
 				throw new InvalidOperationException("Multihash multibase form cannot be used as a blob path.");
 			}
 
-			return id.Substring(Sha256MultibasePrefix.Length, ShardLength);
+			// 'b' is the multibase prefix for the default base32 encoding. The shard
+			// is the first two characters that are not fixed by that prefix plus the
+			// multihash header (algorithm code and digest length). sha2-256's header
+			// is 16 bits, so this offset is 4: the layout already written for it.
+			int offset = GetBase32ShardOffset(multihash);
+			if(id.Length > 0 && id[0] == 'b' && id.Length >= offset + ShardLength)
+				return id.Substring(offset, ShardLength);
+
+			// Some other encoding, or an id too short to skip its header. A stable
+			// hash still yields a two-character lowercase folder. string.GetHashCode
+			// is not stable across processes, so it cannot address a blob.
+			return ShardFromId(id);
+		}
+
+		private static int GetBase32ShardOffset(Multihash multihash)
+		{
+			uint code = (uint)multihash.Algorithm;
+			uint digestLength = (uint)multihash.DigestLength;
+			int headerBytes = VarIntSize(code) + VarIntSize(digestLength);
+			int headerBits = headerBytes * 8;
+
+			// One character for the multibase prefix, then one base32 character per
+			// 5 header bits. Leftover header bits spill into the shard, which is
+			// what makes sha2-256's first shard character vary.
+			return 1 + (headerBits / 5);
+		}
+
+		private static int VarIntSize(uint value)
+		{
+			int size = 1;
+			while(value >= 0x80)
+			{
+				value >>= 7;
+				size++;
+			}
+
+			return size;
+		}
+
+		private static string ShardFromId(string id)
+		{
+			// FNV-1a, 32-bit. The low byte is two lowercase hex digits.
+			uint hash = 2166136261;
+			for(int i = 0; i < id.Length; i++)
+			{
+				hash ^= id[i];
+				hash *= 16777619;
+			}
+
+			return (hash & 0xFF).ToString("x2");
 		}
 		#endregion
 
@@ -243,7 +291,7 @@ namespace BigRedProf.Content.Core.Providers
 		private string GetBlobPath(Multihash multihash)
 		{
 			string id = multihash.ToMultibaseString();
-			string shard = GetShard(id);
+			string shard = GetShard(multihash, id);
 			return Path.Combine(_rootDirectory, BlobDirectoryName, shard, id);
 		}
 		#endregion
@@ -253,12 +301,6 @@ namespace BigRedProf.Content.Core.Providers
 		private const int ShardLength = 2;
 		private const string BlobDirectoryName = "blobs";
 		private const string TempFilePrefix = "tmp-";
-
-		// 'b' is the multibase prefix for base32 lowercase. "ciq" is the base32 of the
-		// fixed SHA-256 multihash header (algorithm code 0x12, digest length 0x20).
-		// Characters inside this prefix do not vary, so they are not a shard. The shard
-		// starts at Sha256MultibasePrefix.Length.
-		private const string Sha256MultibasePrefix = "bciq";
 		#endregion
 	}
 }
