@@ -4,6 +4,7 @@ using BigRedProf.Content.Test.TestDoubles;
 using BigRedProf.Data.Core;
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -470,6 +471,105 @@ namespace BigRedProf.Content.Test
 			finally
 			{
 				DeleteRoot(root);
+			}
+		}
+		#endregion
+
+		#region path tests
+		[Fact]
+		public async Task PutBlobShouldStoreTheBlobInATwoCharacterSubfolder()
+		{
+			string root = CreateRoot(nameof(PutBlobShouldStoreTheBlobInATwoCharacterSubfolder));
+			try
+			{
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+
+				await provider.PutBlobAsync(multihash, blob);
+
+				string blobsDirectory = Path.Combine(Path.GetFullPath(root), "blobs");
+				string[] shardDirectories = Directory.GetDirectories(blobsDirectory);
+				Assert.Single(shardDirectories);
+
+				string shardName = Path.GetFileName(shardDirectories[0]);
+				Assert.Equal(2, shardName.Length);
+
+				string id = multihash.ToMultibaseString();
+				Assert.Equal(id.Substring(4, 2), shardName);
+				Assert.NotEqual(id.Substring(0, 2), shardName);
+
+				string[] files = Directory.GetFiles(shardDirectories[0]);
+				Assert.Single(files);
+				Assert.Equal(id, Path.GetFileName(files[0]));
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task PutBlobShouldRoundTripWhenRootContainsSpaces()
+		{
+			string root = CreateRoot(nameof(PutBlobShouldRoundTripWhenRootContainsSpaces) + " with spaces");
+			try
+			{
+				Assert.Contains(" ", root);
+
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+
+				await provider.PutBlobAsync(multihash, blob);
+				byte[]? fetchedBlob = await provider.TryGetBlobAsync(multihash);
+
+				Assert.Equal(blob, fetchedBlob);
+
+				string path = BlobPath(root, multihash);
+				Assert.Contains(" with spaces", path);
+				Assert.True(File.Exists(path));
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task PutBlobShouldRoundTripWhenRootUsesBackslashes()
+		{
+			string parent = CreateRoot(nameof(PutBlobShouldRoundTripWhenRootUsesBackslashes));
+			// A caller on Windows can hand the provider a root that is already
+			// separated with backslashes, including a segment that contains a space.
+			string root = parent.TrimEnd('\\', '/') + "\\disk store";
+			try
+			{
+				Assert.Contains("\\", root);
+
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+
+				await provider.PutBlobAsync(multihash, blob);
+
+				string resolvedRoot = Path.GetFullPath(root);
+				string shard = AssertBlobPath(resolvedRoot, multihash);
+				Assert.Equal(2, shard.Length);
+
+				// On Windows the backslash is a separator, so the store is a child
+				// directory. Elsewhere it is just a character in the directory name,
+				// and the round trip above is what has to keep working.
+				if(RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+					Assert.True(Directory.Exists(Path.Combine(parent, "disk store")));
+
+				DiskContentStoreStorageProvider reader = new DiskContentStoreStorageProvider(root);
+				Assert.Equal(blob, await reader.TryGetBlobAsync(multihash));
+			}
+			finally
+			{
+				DeleteRoot(Path.GetFullPath(root));
+				DeleteRoot(parent);
 			}
 		}
 		#endregion

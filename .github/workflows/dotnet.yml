@@ -20,7 +20,15 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One OS failing should not hide the other's result. The Windows leg exists
+      # so the disk provider's path tests run on a case-insensitive volume that
+      # separates paths with backslashes.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       # fetch-depth: 0 is REQUIRED, not tidiness. MinVer reads the version from
       # git history, and the default shallow checkout has no tags -- every build
@@ -55,8 +63,11 @@ jobs:
       # remains the only thing that can release a package.
       #
       # Pack runs on pull requests too -- it publishes nothing, and knowing the
-      # package still builds is worth having before merge.
+      # package still builds is worth having before merge. Linux only: the
+      # Windows leg is here to run tests, and a second pack would make a tag
+      # push the same version twice.
       - name: Pack
+        if: runner.os == 'Linux'
         run: dotnet pack -c Release -o ${{ github.workspace }}/artifacts/packages
         working-directory: src
       # The temporary key is valid for one hour and each OIDC token buys exactly
@@ -64,7 +75,7 @@ jobs:
       # the job. It is gated on the tag too -- on a branch build there is
       # nothing to publish and no policy would match.
       - name: NuGet login (OIDC to short-lived key)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/v')
         uses: NuGet/login@v1
         id: nuget-login
         with:
@@ -76,5 +87,5 @@ jobs:
       # duplicate means the same tag is being released twice, and that should
       # fail loudly rather than be quietly ignored.
       - name: Push packages to nuget.org
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/v')
         run: dotnet nuget push "artifacts/packages/*.nupkg" --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
