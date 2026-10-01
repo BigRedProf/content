@@ -20,7 +20,15 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One OS failing should not hide the other's result. The Windows leg exists
+      # so the disk provider's path tests run on a case-insensitive volume that
+      # separates paths with backslashes.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       # fetch-depth: 0 is REQUIRED, not tidiness. MinVer reads the version from
       # git history, and the default shallow checkout has no tags -- every build
@@ -51,6 +59,26 @@ jobs:
         run: task verify
         env:
           BRP_DOTNET_CONFIGURATION: Release
+
+  # Pack and publish are a separate job so they cannot start until every
+  # verify leg has passed. needs: on a matrix job waits for all of its legs;
+  # a failure on Windows therefore blocks the NuGet push. A published version
+  # is immutable, so publishing from the Linux leg while Windows is still
+  # running (or has failed) would ship a version that missed the check.
+  publish:
+    name: Pack and publish
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 is REQUIRED here too. This job has its own checkout, and
+      # MinVer reads the version from tags.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.403
       # Packaging and publishing stay as explicit dotnet steps, so this workflow
       # remains the only thing that can release a package.
       #

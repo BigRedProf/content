@@ -67,15 +67,17 @@
 	and the artifact is wrong. MinVer makes the tag the single source of truth,
 	so the two cannot disagree.
 
-	MinVerMinimumMajorMinor is the version line this package is heading for, so an
-	untagged build advertises where it is going rather than a patch of what already
-	shipped. 0.1.0 is released, and the next release is 0.2.0: a minor bump
-	because this package's own namespace changed from Core.Models to Core.Data, and
-	pre-1.0 that is how a breaking change is signalled.
+	MinVerMinimumMajorMinor is a floor: when the version MinVer works out from
+	history falls below it, the floor wins. The newest tag is v0.2.0, so history
+	alone calls an untagged build 0.2.1-alpha.0.N, and the floor stays at 0.2 so
+	it does not hide that. An additive change belongs on that patch line.
 
-	Move this when 0.2.0 ships, not before. With the floor still at 0.1 an untagged
-	build called itself 0.1.1-alpha, which says "a patch of what shipped" about a
-	tree whose public surface has already moved.
+	Move the floor when a breaking change means the release being headed for is a
+	new minor, not a patch of what shipped. Pre-1.0, a minor bump is how a breaking
+	change is signalled: 0.2.0 was that bump, for the namespace move from
+	Core.Models to Core.Data. With the floor still at 0.1 an untagged build called
+	itself 0.1.1-alpha, which says "a patch of what shipped" about a tree whose
+	public surface had already broken.
 
 	NOTE: MinVer reads git history, so CI must check out with fetch-depth: 0.
 	A shallow clone has no tags and every build silently becomes an alpha.

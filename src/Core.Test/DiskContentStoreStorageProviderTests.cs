@@ -1,0 +1,664 @@
+using BigRedProf.Content.Core;
+using BigRedProf.Content.Core.Providers;
+using BigRedProf.Content.Test.TestDoubles;
+using BigRedProf.Data.Core;
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using Xunit;
+
+namespace BigRedProf.Content.Test
+{
+	public class DiskContentStoreStorageProviderTests
+	{
+		#region PutBlobAsync tests
+		[Fact]
+		public async Task PutBlobShouldRoundTrip()
+		{
+			string root = CreateRoot(nameof(PutBlobShouldRoundTrip));
+			try
+			{
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+
+				await provider.PutBlobAsync(multihash, blob);
+				byte[]? fetchedBlob = await provider.TryGetBlobAsync(multihash);
+
+				Assert.NotNull(fetchedBlob);
+				Assert.Equal(blob, fetchedBlob);
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task PutBlobShouldBeIdempotent()
+		{
+			string root = CreateRoot(nameof(PutBlobShouldBeIdempotent));
+			try
+			{
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+
+				await provider.PutBlobAsync(multihash, blob);
+				await provider.PutBlobAsync(multihash, blob);
+
+				string[] files = Directory.GetFiles(root, "*", SearchOption.AllDirectories);
+				Assert.Single(files);
+				Assert.Equal(blob, await provider.TryGetBlobAsync(multihash));
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task PutBlobShouldDefensivelyCopyTheBlob()
+		{
+			string root = CreateRoot(nameof(PutBlobShouldDefensivelyCopyTheBlob));
+			try
+			{
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+
+				await provider.PutBlobAsync(multihash, blob);
+				blob[0] = 0xFF;
+
+				byte[]? fetchedBlob = await provider.TryGetBlobAsync(multihash);
+				Assert.NotNull(fetchedBlob);
+				Assert.Equal(new byte[] { 0x42, 0x49, 0x47 }, fetchedBlob);
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task PutBlobShouldPersistAcrossProviderInstances()
+		{
+			string root = CreateRoot(nameof(PutBlobShouldPersistAcrossProviderInstances));
+			try
+			{
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+
+				DiskContentStoreStorageProvider writer = new DiskContentStoreStorageProvider(root);
+				await writer.PutBlobAsync(multihash, blob);
+
+				DiskContentStoreStorageProvider reader = new DiskContentStoreStorageProvider(root);
+				byte[]? fetchedBlob = await reader.TryGetBlobAsync(multihash);
+
+				Assert.NotNull(fetchedBlob);
+				Assert.Equal(blob, fetchedBlob);
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task PutBlobShouldPlaceDifferentIdsInDifferentFolders()
+		{
+			string root = CreateRoot(nameof(PutBlobShouldPlaceDifferentIdsInDifferentFolders));
+			try
+			{
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				byte[] firstBlob = new byte[] { 0x42, 0x49, 0x47 };
+				byte[] secondBlob = new byte[] { 0x01 };
+				Multihash firstMultihash = Multihash.FromBytes(firstBlob, MultihashAlgorithm.Sha256);
+				Multihash secondMultihash = Multihash.FromBytes(secondBlob, MultihashAlgorithm.Sha256);
+
+				await provider.PutBlobAsync(firstMultihash, firstBlob);
+				await provider.PutBlobAsync(secondMultihash, secondBlob);
+
+				string firstShard = AssertBlobPath(root, firstMultihash);
+				string secondShard = AssertBlobPath(root, secondMultihash);
+				Assert.NotEqual(firstShard, secondShard);
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task PutBlobShouldStayIdempotentWhenRaced()
+		{
+			string root = CreateRoot(nameof(PutBlobShouldStayIdempotentWhenRaced));
+			try
+			{
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47, 0x52, 0x45, 0x44 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+
+				Task[] puts = new Task[8];
+				for(int i = 0; i < puts.Length; i++)
+					puts[i] = provider.PutBlobAsync(multihash, blob);
+
+				await Task.WhenAll(puts);
+
+				string[] files = Directory.GetFiles(root, "*", SearchOption.AllDirectories);
+				Assert.Single(files);
+				Assert.Equal(blob, File.ReadAllBytes(files[0]));
+				Assert.Equal(blob, await provider.TryGetBlobAsync(multihash));
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task PutBlobShouldLeaveAnExistingBlobUntouched()
+		{
+			string root = CreateRoot(nameof(PutBlobShouldLeaveAnExistingBlobUntouched));
+			try
+			{
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+				string finalPath = BlobPath(root, multihash);
+				string? directory = Path.GetDirectoryName(finalPath);
+				Assert.NotNull(directory);
+				Directory.CreateDirectory(directory!);
+
+				// A complete file already occupies the final path. A later put must not
+				// replace it: replacing is how a torn write would become visible, and
+				// hash-addressed storage keeps the first blob.
+				byte[] existing = new byte[] { 0x11, 0x22 };
+				File.WriteAllBytes(finalPath, existing);
+
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				await provider.PutBlobAsync(multihash, blob);
+
+				Assert.Equal(existing, File.ReadAllBytes(finalPath));
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task PutBlobShouldThrowWhenArgumentsAreNull()
+		{
+			string root = CreateRoot(nameof(PutBlobShouldThrowWhenArgumentsAreNull));
+			try
+			{
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				byte[] blob = new byte[] { 0x01 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+
+				await Assert.ThrowsAsync<ArgumentNullException>(
+					async () =>
+					{
+						await provider.PutBlobAsync(null!, blob);
+					}
+				);
+
+				await Assert.ThrowsAsync<ArgumentNullException>(
+					async () =>
+					{
+						await provider.PutBlobAsync(multihash, null!);
+					}
+				);
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+		#endregion
+
+		#region TryGetBlobAsync tests
+		[Fact]
+		public async Task TryGetBlobShouldReturnNullWhenBlobNotFound()
+		{
+			string root = CreateRoot(nameof(TryGetBlobShouldReturnNullWhenBlobNotFound));
+			try
+			{
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				Multihash multihash = Multihash.FromBytes(new byte[] { 0x01 }, MultihashAlgorithm.Sha256);
+
+				byte[]? fetchedBlob = await provider.TryGetBlobAsync(multihash);
+
+				Assert.Null(fetchedBlob);
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task TryGetBlobShouldReturnNullWhenTheStoreDirectoryDoesNotExist()
+		{
+			string root = Path.Combine(
+				CreateRoot(nameof(TryGetBlobShouldReturnNullWhenTheStoreDirectoryDoesNotExist)),
+				"missing"
+			);
+			try
+			{
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				Multihash multihash = Multihash.FromBytes(new byte[] { 0x01 }, MultihashAlgorithm.Sha256);
+
+				byte[]? fetchedBlob = await provider.TryGetBlobAsync(multihash);
+
+				Assert.Null(fetchedBlob);
+				Assert.False(Directory.Exists(root));
+			}
+			finally
+			{
+				DeleteRoot(Path.GetDirectoryName(root)!);
+			}
+		}
+
+		[Fact]
+		public async Task TryGetBlobShouldDefensivelyCopyTheBlob()
+		{
+			string root = CreateRoot(nameof(TryGetBlobShouldDefensivelyCopyTheBlob));
+			try
+			{
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+
+				await provider.PutBlobAsync(multihash, blob);
+
+				byte[]? firstFetchedBlob = await provider.TryGetBlobAsync(multihash);
+				Assert.NotNull(firstFetchedBlob);
+				firstFetchedBlob![0] = 0xFF;
+
+				byte[]? secondFetchedBlob = await provider.TryGetBlobAsync(multihash);
+				Assert.NotNull(secondFetchedBlob);
+				Assert.Equal(new byte[] { 0x42, 0x49, 0x47 }, secondFetchedBlob);
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task TryGetBlobShouldIgnoreAnIncompleteTemporaryFile()
+		{
+			string root = CreateRoot(nameof(TryGetBlobShouldIgnoreAnIncompleteTemporaryFile));
+			try
+			{
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+				string finalPath = BlobPath(root, multihash);
+				string? directory = Path.GetDirectoryName(finalPath);
+				Assert.NotNull(directory);
+				Directory.CreateDirectory(directory!);
+
+				// A crashed put leaves its temp next to where the blob will be. That
+				// file is not the blob, and a later successful put must not return it.
+				string tempPath = Path.Combine(directory!, "tmp-crashed");
+				File.WriteAllBytes(tempPath, new byte[] { 0x01, 0x02, 0x03 });
+
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				Assert.Null(await provider.TryGetBlobAsync(multihash));
+
+				await provider.PutBlobAsync(multihash, blob);
+
+				byte[]? fetchedBlob = await provider.TryGetBlobAsync(multihash);
+				Assert.Equal(blob, fetchedBlob);
+				Assert.Equal(blob, File.ReadAllBytes(finalPath));
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task TryGetBlobShouldThrowWhenMultihashIsNull()
+		{
+			string root = CreateRoot(nameof(TryGetBlobShouldThrowWhenMultihashIsNull));
+			try
+			{
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+
+				await Assert.ThrowsAsync<ArgumentNullException>(
+					async () =>
+					{
+						await provider.TryGetBlobAsync(null!);
+					}
+				);
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+		#endregion
+
+		#region constructor tests
+		[Fact]
+		public void ConstructorShouldThrowWhenRootDirectoryIsNullOrWhitespace()
+		{
+			Assert.Throws<ArgumentNullException>(
+				() =>
+				{
+					new DiskContentStoreStorageProvider(null!);
+				}
+			);
+
+			Assert.Throws<ArgumentException>(
+				() =>
+				{
+					new DiskContentStoreStorageProvider(" ");
+				}
+			);
+		}
+
+		[Fact]
+		public void ConstructorShouldThrowWhenRootDirectoryIsAFile()
+		{
+			string root = CreateRoot(nameof(ConstructorShouldThrowWhenRootDirectoryIsAFile));
+			try
+			{
+				string filePath = Path.Combine(root, "not-a-directory");
+				File.WriteAllText(filePath, "x");
+
+				Assert.Throws<ArgumentException>(
+					() =>
+					{
+						new DiskContentStoreStorageProvider(filePath);
+					}
+				);
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+		#endregion
+
+		#region ContentStore tests
+		[Fact]
+		public async Task ContentShouldPersistAcrossProviderInstances()
+		{
+			string root = CreateRoot(nameof(ContentShouldPersistAcrossProviderInstances));
+			try
+			{
+				Code content = new Code(new byte[] { 0x42, 0x49, 0x47, 0x52, 0x45, 0x44 });
+				Multihash multihash;
+
+				DiskContentStoreStorageProvider writer = new DiskContentStoreStorageProvider(root);
+				ContentStore writingStore = new ContentStore(writer, new ListScribe());
+				multihash = await writingStore.PutContentAsync(content);
+
+				// A new process gets a new provider and a new catalog scribe. The catalog
+				// is not this provider's job; the blob on disk is enough to read the content.
+				DiskContentStoreStorageProvider reader = new DiskContentStoreStorageProvider(root);
+				ContentStore readingStore = new ContentStore(reader, new ListScribe());
+				Code? fetchedContent = await readingStore.TryGetContentAsync(multihash);
+
+				Assert.NotNull(fetchedContent);
+				Assert.Equal(content, fetchedContent);
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task CorruptBlobShouldSurfaceAsContentIntegrityException()
+		{
+			string root = CreateRoot(nameof(CorruptBlobShouldSurfaceAsContentIntegrityException));
+			try
+			{
+				Code content = new Code(new byte[] { 0x42, 0x49, 0x47, 0x52, 0x45, 0x44 });
+				DiskContentStoreStorageProvider writer = new DiskContentStoreStorageProvider(root);
+				ContentStore writingStore = new ContentStore(writer, new ListScribe());
+				Multihash multihash = await writingStore.PutContentAsync(content);
+
+				string path = BlobPath(root, multihash);
+				byte[] stored = File.ReadAllBytes(path);
+				stored[stored.Length - 1] ^= 0x01;
+				File.WriteAllBytes(path, stored);
+
+				DiskContentStoreStorageProvider reader = new DiskContentStoreStorageProvider(root);
+				ContentStore readingStore = new ContentStore(reader, new ListScribe());
+
+				// The provider stays dumb and returns the bytes on disk. ContentStore
+				// re-hashes and is what turns the corruption into an integrity failure.
+				Assert.Equal(stored, await reader.TryGetBlobAsync(multihash));
+
+				ContentIntegrityException exception = await Assert.ThrowsAsync<ContentIntegrityException>(
+					async () =>
+					{
+						await readingStore.TryGetContentAsync(multihash);
+					}
+				);
+
+				Assert.Equal(multihash, exception.ExpectedMultihash);
+				Assert.NotEqual(multihash, exception.ActualMultihash);
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task MissingBlobShouldReturnNullFromContentStore()
+		{
+			string root = CreateRoot(nameof(MissingBlobShouldReturnNullFromContentStore));
+			try
+			{
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				ContentStore store = new ContentStore(provider, new ListScribe());
+				Multihash multihash = Multihash.FromBytes(new byte[] { 0x01, 0x02, 0x03 }, MultihashAlgorithm.Sha256);
+
+				Assert.Null(await provider.TryGetBlobAsync(multihash));
+
+				Code? fetchedContent = await store.TryGetContentAsync(multihash);
+
+				Assert.Null(fetchedContent);
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+		#endregion
+
+		#region path tests
+		[Fact]
+		public async Task PutBlobShouldStoreTheBlobInATwoCharacterSubfolder()
+		{
+			string root = CreateRoot(nameof(PutBlobShouldStoreTheBlobInATwoCharacterSubfolder));
+			try
+			{
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+
+				await provider.PutBlobAsync(multihash, blob);
+
+				string blobsDirectory = Path.Combine(Path.GetFullPath(root), "blobs");
+				string[] shardDirectories = Directory.GetDirectories(blobsDirectory);
+				Assert.Single(shardDirectories);
+
+				string shardName = Path.GetFileName(shardDirectories[0]);
+				Assert.Equal(2, shardName.Length);
+				Assert.Equal(shardName, shardName.ToLowerInvariant());
+				foreach(char character in shardName)
+					Assert.Contains(character, "0123456789abcdef");
+
+				string id = multihash.ToMultibaseString();
+				Assert.Equal(DiskContentStoreStorageProvider.GetShard(id), shardName);
+
+				string[] files = Directory.GetFiles(shardDirectories[0]);
+				Assert.Single(files);
+				Assert.Equal(id, Path.GetFileName(files[0]));
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task PutBlobShouldRoundTripWhenRootContainsSpaces()
+		{
+			string root = CreateRoot(nameof(PutBlobShouldRoundTripWhenRootContainsSpaces) + " with spaces");
+			try
+			{
+				Assert.Contains(" ", root);
+
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+
+				await provider.PutBlobAsync(multihash, blob);
+				byte[]? fetchedBlob = await provider.TryGetBlobAsync(multihash);
+
+				Assert.Equal(blob, fetchedBlob);
+
+				string path = BlobPath(root, multihash);
+				Assert.Contains(" with spaces", path);
+				Assert.True(File.Exists(path));
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public async Task PutBlobShouldRoundTripWhenRootUsesBackslashes()
+		{
+			string parent = CreateRoot(nameof(PutBlobShouldRoundTripWhenRootUsesBackslashes));
+			// A caller on Windows can hand the provider a root that is already
+			// separated with backslashes, including a segment that contains a space.
+			string root = parent.TrimEnd('\\', '/') + "\\disk store";
+			try
+			{
+				Assert.Contains("\\", root);
+
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+
+				await provider.PutBlobAsync(multihash, blob);
+
+				string resolvedRoot = Path.GetFullPath(root);
+				string shard = AssertBlobPath(resolvedRoot, multihash);
+				Assert.Equal(2, shard.Length);
+
+				// On Windows the backslash is a separator, so the store is a child
+				// directory. Elsewhere it is just a character in the directory name,
+				// and the round trip above is what has to keep working.
+				if(RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+					Assert.True(Directory.Exists(Path.Combine(parent, "disk store")));
+
+				DiskContentStoreStorageProvider reader = new DiskContentStoreStorageProvider(root);
+				Assert.Equal(blob, await reader.TryGetBlobAsync(multihash));
+			}
+			finally
+			{
+				DeleteRoot(Path.GetFullPath(root));
+				DeleteRoot(parent);
+			}
+		}
+
+		[Fact]
+		public async Task PutBlobShouldPlaceAKnownSha256IdInItsPinnedFolder()
+		{
+			// SHA-256 of { 0x42, 0x49, 0x47 }, encoded by Multihash.ToMultibaseString().
+			// Folder f2 is the first two hex characters of SHA-256 over the UTF-8 id.
+			const string id = "bciqdipgqvschvevxautmokneczir5wrjlovygf4jxoj3vfwsvuhb7fy";
+			const string shard = "f2";
+
+			string root = CreateRoot(nameof(PutBlobShouldPlaceAKnownSha256IdInItsPinnedFolder));
+			try
+			{
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+				Assert.Equal(id, multihash.ToMultibaseString());
+				Assert.Equal(shard, DiskContentStoreStorageProvider.GetShard(id));
+
+				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
+				await provider.PutBlobAsync(multihash, blob);
+
+				string path = Path.Combine(Path.GetFullPath(root), "blobs", shard, id);
+				Assert.True(File.Exists(path));
+				Assert.Equal(blob, File.ReadAllBytes(path));
+				Assert.Equal(blob, await provider.TryGetBlobAsync(multihash));
+			}
+			finally
+			{
+				DeleteRoot(root);
+			}
+		}
+
+		[Fact]
+		public void KnownNonSha256IdShouldLandInItsPinnedFolder()
+		{
+			// Canonical multibase (base32, prefix 'b') of multihash code 0x13 (sha2-512),
+			// digest length 0x40, and a 64-byte digest whose first byte is 0x42 and whose
+			// remaining bytes are zero. Data's public API cannot construct this algorithm,
+			// so the pin is the canonical id string itself. Folder 03 is the first two hex
+			// characters of SHA-256 over the UTF-8 id.
+			const string id = "bcnaeeaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+			const string shard = "03";
+
+			Assert.False(id.StartsWith("bciq"));
+			Assert.Equal(shard, DiskContentStoreStorageProvider.GetShard(id));
+		}
+		#endregion
+
+		#region private methods
+		private static string CreateRoot(string name)
+		{
+			string root = Path.Combine(Path.GetTempPath(), "BigRedProf.Content.Test", "DiskContentStoreStorageProvider", name);
+			if(Directory.Exists(root))
+				Directory.Delete(root, true);
+
+			Directory.CreateDirectory(root);
+			return root;
+		}
+
+		private static void DeleteRoot(string root)
+		{
+			if(Directory.Exists(root))
+				Directory.Delete(root, true);
+		}
+
+		private static string BlobPath(string root, Multihash multihash)
+		{
+			string id = multihash.ToMultibaseString();
+			string shard = DiskContentStoreStorageProvider.GetShard(id);
+			return Path.Combine(Path.GetFullPath(root), "blobs", shard, id);
+		}
+
+		private static string AssertBlobPath(string root, Multihash multihash)
+		{
+			string id = multihash.ToMultibaseString();
+			Assert.Equal(id, id.ToLowerInvariant());
+
+			string path = BlobPath(root, multihash);
+			Assert.True(File.Exists(path));
+			Assert.Equal(id, Path.GetFileName(path));
+
+			string shard = DiskContentStoreStorageProvider.GetShard(id);
+			Assert.Equal(2, shard.Length);
+			Assert.Equal(shard, Path.GetFileName(Path.GetDirectoryName(path)));
+			return shard;
+		}
+		#endregion
+	}
+}
