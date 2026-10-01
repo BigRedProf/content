@@ -66,6 +66,14 @@ when it exits. `DiskContentStoreStorageProvider` stores them as files under a
 root directory and still has them when a new process opens that same directory.
 It does not persist the catalog story; that remains the scribe's job.
 
+### Disk store layout
+
+On-disk format version 1 stores each blob at `<root>/blobs/<hex2>/<id>`. `id` is
+the canonical string from `Multihash.ToMultibaseString()`. `hex2` is the first
+two lowercase hex characters of SHA-256 over the UTF-8 bytes of that id. This
+layout is fixed. Changing it would break existing stores: a blob already written
+would be looked up in a different folder and look missing.
+
 The API boundary is `Code`, not model, so `ContentStore` manages its own pied piper
 internally; callers never need to prepare one. Consumers that decode catalog events
 themselves (projections, inspection tools) register `ContentStoredPackRat` with their own

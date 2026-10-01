@@ -3,9 +3,7 @@ using BigRedProf.Content.Core.Providers;
 using BigRedProf.Content.Test.TestDoubles;
 using BigRedProf.Data.Core;
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Xunit;
@@ -108,9 +106,9 @@ namespace BigRedProf.Content.Test
 		}
 
 		[Fact]
-		public async Task PutBlobShouldShardPastTheFixedMultibasePrefix()
+		public async Task PutBlobShouldPlaceDifferentIdsInDifferentFolders()
 		{
-			string root = CreateRoot(nameof(PutBlobShouldShardPastTheFixedMultibasePrefix));
+			string root = CreateRoot(nameof(PutBlobShouldPlaceDifferentIdsInDifferentFolders));
 			try
 			{
 				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
@@ -496,10 +494,12 @@ namespace BigRedProf.Content.Test
 
 				string shardName = Path.GetFileName(shardDirectories[0]);
 				Assert.Equal(2, shardName.Length);
+				Assert.Equal(shardName, shardName.ToLowerInvariant());
+				foreach(char character in shardName)
+					Assert.Contains(character, "0123456789abcdef");
 
 				string id = multihash.ToMultibaseString();
-				Assert.Equal(id.Substring(4, 2), shardName);
-				Assert.NotEqual(id.Substring(0, 2), shardName);
+				Assert.Equal(DiskContentStoreStorageProvider.GetShard(id), shardName);
 
 				string[] files = Directory.GetFiles(shardDirectories[0]);
 				Assert.Single(files);
@@ -576,26 +576,27 @@ namespace BigRedProf.Content.Test
 		}
 
 		[Fact]
-		public async Task PutBlobShouldRoundTripANonSha256Multihash()
+		public async Task PutBlobShouldPlaceAKnownSha256IdInItsPinnedFolder()
 		{
-			string root = CreateRoot(nameof(PutBlobShouldRoundTripANonSha256Multihash));
+			// SHA-256 of { 0x42, 0x49, 0x47 }, encoded by Multihash.ToMultibaseString().
+			// Folder f2 is the first two hex characters of SHA-256 over the UTF-8 id.
+			const string id = "bciqdipgqvschvevxautmokneczir5wrjlovygf4jxoj3vfwsvuhb7fy";
+			const string shard = "f2";
+
+			string root = CreateRoot(nameof(PutBlobShouldPlaceAKnownSha256IdInItsPinnedFolder));
 			try
 			{
-				// sha2-512 is multicodec 0x13. Its base32 form does not start with the
-				// sha2-256 header "bciq", and the header is still 16 bits, so the shard
-				// stays at offset 4.
-				byte[] digest = new byte[64];
-				digest[0] = 0x42;
-				Multihash multihash = CreateMultihash(0x13, digest);
-				string id = multihash.ToMultibaseString();
-				Assert.False(id.StartsWith("bciq"));
+				byte[] blob = new byte[] { 0x42, 0x49, 0x47 };
+				Multihash multihash = Multihash.FromBytes(blob, MultihashAlgorithm.Sha256);
+				Assert.Equal(id, multihash.ToMultibaseString());
+				Assert.Equal(shard, DiskContentStoreStorageProvider.GetShard(id));
 
-				byte[] blob = new byte[] { 0x11, 0x22, 0x33 };
 				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
 				await provider.PutBlobAsync(multihash, blob);
 
-				string path = Path.Combine(Path.GetFullPath(root), "blobs", id.Substring(4, 2), id);
+				string path = Path.Combine(Path.GetFullPath(root), "blobs", shard, id);
 				Assert.True(File.Exists(path));
+				Assert.Equal(blob, File.ReadAllBytes(path));
 				Assert.Equal(blob, await provider.TryGetBlobAsync(multihash));
 			}
 			finally
@@ -605,32 +606,18 @@ namespace BigRedProf.Content.Test
 		}
 
 		[Fact]
-		public async Task PutBlobShouldShardAWiderHeaderByItsOwnSize()
+		public void KnownNonSha256IdShouldLandInItsPinnedFolder()
 		{
-			string root = CreateRoot(nameof(PutBlobShouldShardAWiderHeaderByItsOwnSize));
-			try
-			{
-				// Code 0xC8 takes two varint bytes, plus one byte of digest length:
-				// 24 header bits, so the shard starts at offset 5 rather than 4.
-				byte[] digest = new byte[32];
-				digest[0] = 0x7E;
-				Multihash multihash = CreateMultihash(0xC8, digest);
-				string id = multihash.ToMultibaseString();
-				Assert.NotEqual(id.Substring(4, 2), id.Substring(5, 2));
+			// Canonical multibase (base32, prefix 'b') of multihash code 0x13 (sha2-512),
+			// digest length 0x40, and a 64-byte digest whose first byte is 0x42 and whose
+			// remaining bytes are zero. Data's public API cannot construct this algorithm,
+			// so the pin is the canonical id string itself. Folder 03 is the first two hex
+			// characters of SHA-256 over the UTF-8 id.
+			const string id = "bcnaeeaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+			const string shard = "03";
 
-				byte[] blob = new byte[] { 0x44, 0x55 };
-				DiskContentStoreStorageProvider provider = new DiskContentStoreStorageProvider(root);
-				await provider.PutBlobAsync(multihash, blob);
-
-				string path = Path.Combine(Path.GetFullPath(root), "blobs", id.Substring(5, 2), id);
-				Assert.True(File.Exists(path));
-				Assert.False(File.Exists(Path.Combine(Path.GetFullPath(root), "blobs", id.Substring(4, 2), id)));
-				Assert.Equal(blob, await provider.TryGetBlobAsync(multihash));
-			}
-			finally
-			{
-				DeleteRoot(root);
-			}
+			Assert.False(id.StartsWith("bciq"));
+			Assert.Equal(shard, DiskContentStoreStorageProvider.GetShard(id));
 		}
 		#endregion
 
@@ -653,57 +640,23 @@ namespace BigRedProf.Content.Test
 
 		private static string BlobPath(string root, Multihash multihash)
 		{
-			// Skip the fixed "bciq" prefix. See DiskContentStoreStorageProvider.
 			string id = multihash.ToMultibaseString();
-			string shard = id.Substring(4, 2);
+			string shard = DiskContentStoreStorageProvider.GetShard(id);
 			return Path.Combine(Path.GetFullPath(root), "blobs", shard, id);
-		}
-
-		private static Multihash CreateMultihash(byte code, byte[] digest)
-		{
-			// BigRedProf.Data currently encodes only sha2-256. Teaching its encoder
-			// this code lets a test round-trip a real multibase id whose header is
-			// not "bciq". The map is append-only and does not change sha2-256.
-			FieldInfo? field = typeof(Multihash).GetField(
-				"_algoToCode",
-				BindingFlags.NonPublic | BindingFlags.Static
-			);
-			if(field == null)
-				throw new InvalidOperationException("Multihash no longer keeps its algorithm map in _algoToCode.");
-
-			Dictionary<MultihashAlgorithm, uint>? algorithms =
-				field.GetValue(null) as Dictionary<MultihashAlgorithm, uint>;
-			if(algorithms == null)
-				throw new InvalidOperationException("Multihash algorithm map is null.");
-
-			algorithms[(MultihashAlgorithm)code] = code;
-
-			ConstructorInfo? constructor = typeof(Multihash).GetConstructor(
-				BindingFlags.Instance | BindingFlags.NonPublic,
-				null,
-				new Type[] { typeof(byte[]), typeof(MultihashAlgorithm) },
-				null
-			);
-			if(constructor == null)
-				throw new InvalidOperationException("Multihash no longer has the expected constructor.");
-
-			object created = constructor.Invoke(new object[] { digest, (MultihashAlgorithm)code });
-			return (Multihash)created;
 		}
 
 		private static string AssertBlobPath(string root, Multihash multihash)
 		{
 			string id = multihash.ToMultibaseString();
-			Assert.StartsWith("bciq", id);
 			Assert.Equal(id, id.ToLowerInvariant());
 
 			string path = BlobPath(root, multihash);
 			Assert.True(File.Exists(path));
 			Assert.Equal(id, Path.GetFileName(path));
 
-			string shard = id.Substring(4, 2);
+			string shard = DiskContentStoreStorageProvider.GetShard(id);
+			Assert.Equal(2, shard.Length);
 			Assert.Equal(shard, Path.GetFileName(Path.GetDirectoryName(path)));
-			Assert.NotEqual(id.Substring(0, 2), shard);
 			return shard;
 		}
 		#endregion

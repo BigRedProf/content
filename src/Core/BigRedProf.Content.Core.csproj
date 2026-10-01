@@ -16,4 +16,8 @@
 		<PackageReference Include="BigRedProf.Stories.Core" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<InternalsVisibleTo Include="BigRedProf.Content.Core.Test" />
+	</ItemGroup>
+
 </Project>
