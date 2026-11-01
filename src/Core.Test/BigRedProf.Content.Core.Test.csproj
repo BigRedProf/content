@@ -24,4 +24,8 @@
 		<ProjectReference Include="..\Core\BigRedProf.Content.Core.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<None Include="..\Golden\golden.txt" Link="Golden\golden.txt" CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
+
 </Project>
