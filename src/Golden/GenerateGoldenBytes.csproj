@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>disable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>false</IsPackable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Core\BigRedProf.Content.Core.csproj" />
+		<PackageReference Include="BigRedProf.Data.Core" />
+		<PackageReference Include="BigRedProf.Stories.Core" />
+	</ItemGroup>
+
+</Project>

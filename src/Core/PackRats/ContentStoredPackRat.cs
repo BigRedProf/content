@@ -22,10 +22,10 @@ namespace BigRedProf.Content.Core.PackRats
 		#endregion
 
 		#region PackRat methods
-		public override void PackModel(CodeWriter writer, ContentStored model)
+		public override void PackModel(BitStream stream, ContentStored model)
 		{
-			if(writer == null)
-				throw new ArgumentNullException(nameof(writer));
+			if(stream == null)
+				throw new ArgumentNullException(nameof(stream));
 
 			if(model == null)
 				throw new ArgumentNullException(nameof(model));
@@ -33,15 +33,15 @@ namespace BigRedProf.Content.Core.PackRats
 			if(model.Multihash == null)
 				throw new ArgumentException("The Multihash property cannot be null.", nameof(model));
 
-			PiedPiper.PackModel<Multihash>(writer, model.Multihash, CoreSchema.MultihashSchema);
+			PiedPiper.PackModel<Multihash>(stream, model.Multihash, CoreSchema.MultihashSchema);
 		}
 
-		public override ContentStored UnpackModel(CodeReader reader)
+		public override ContentStored UnpackModel(BitStream stream)
 		{
-			if(reader == null)
-				throw new ArgumentNullException(nameof(reader));
+			if(stream == null)
+				throw new ArgumentNullException(nameof(stream));
 
-			Multihash multihash = PiedPiper.UnpackModel<Multihash>(reader, CoreSchema.MultihashSchema);
+			Multihash multihash = PiedPiper.UnpackModel<Multihash>(stream, CoreSchema.MultihashSchema);
 
 			ContentStored model = new ContentStored()
 			{
